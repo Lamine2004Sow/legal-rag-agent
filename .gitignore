@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+.dual-graph/
+
+# Données générées (python ingest.py)
+data/
+
+# Runs d'évaluation (python eval/run_eval.py)
+eval/runs/
