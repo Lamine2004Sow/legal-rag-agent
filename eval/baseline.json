@@ -1,14 +1,14 @@
 {
-  "source_run": "20261026-003310_baseline-e5base",
+  "source_run": "20261026-004534_guard-perquery",
   "config": {
-    "label": "baseline-e5base",
-    "date": "2026-10-26T00:33:10",
+    "label": "guard-perquery",
+    "date": "2026-10-26T00:45:34",
     "git_sha": "e85d4e7",
     "DEEPSEEK_MODEL": "deepseek-chat",
     "RETRIEVER_DATA_DIR": "data/e5-base",
     "RETRIEVER_MODEL": "intfloat/multilingual-e5-base",
     "prompt_hashes": {
-      "graph.GUARD_PROMPT": "dd7a88c84681",
+      "graph.GUARD_PROMPT": "a796a81b2426",
       "graph.GENERATE_PROMPT": "0a9e341b94b0",
       "reformulate.REFORMULATE_PROMPT": "5e55405b30a9"
     },
@@ -22,10 +22,10 @@
   },
   "metrics": {
     "n_total": 60,
-    "retrieval_hit_rate": 0.8,
-    "answer_rate": 0.9,
-    "false_refusal_rate": 0.09999999999999998,
-    "citation_accuracy": 0.8888888888888888,
+    "retrieval_hit_rate": 0.9,
+    "answer_rate": 0.975,
+    "false_refusal_rate": 0.025000000000000022,
+    "citation_accuracy": 0.9230769230769231,
     "correct_refusal_rate": 1.0,
     "false_answer_rate": 0.0,
     "correct_refusal_rate_out_of_corpus": 1.0,
@@ -34,19 +34,22 @@
     "error_count": 0
   },
   "llm_metrics": {
-    "judge_correctness_mean": 0.9583333333333334,
-    "judge_groundedness_mean": 1.0,
-    "ragas_faithfulness": 0.8279914801973627,
-    "ragas_answer_relevancy": 0.8634247605795005,
-    "ragas_context_recall": 0.8333333333333334
+    "judge_correctness_mean": 0.9615384615384616,
+    "judge_groundedness_mean": 0.9871794871794872,
+    "ragas_faithfulness": 0.7831682039261226,
+    "ragas_answer_relevancy": 0.862487740712137,
+    "ragas_context_recall": 0.8717948717948718
   },
   "passing_ids": [
     "civ-01",
     "civ-02",
     "civ-03",
+    "civ-05",
     "civ-06",
+    "civ-07",
     "civ-08",
     "civ-09",
+    "civ-10",
     "civ-11",
     "civ-12",
     "civ-14",
@@ -72,6 +75,7 @@
     "con-16",
     "con-17",
     "civ-21",
+    "civ-22",
     "civ-23",
     "ooc-01",
     "ooc-02",

@@ -25,6 +25,11 @@ from retriever import RRF_K, HybridRetriever
 
 logger = logging.getLogger(__name__)
 
+# Fusion multi-requêtes (voir multi_query_search).
+# Nombre de meilleurs résultats de chaque reformulation garantis dans le top k, avant la RRF.
+DEFAULT_PER_QUERY = 1
+# Poids RRF de la question d'origine (1.0 = même poids que chaque reformulation).
+DEFAULT_ORIGINAL_WEIGHT = 1.0
 
 
 class Reformulation(BaseModel):
@@ -90,27 +95,48 @@ def multi_query_search(
     queries: list[str],
     k: int = 5,
     n_candidates: int = 30,
+    per_query: int = DEFAULT_PER_QUERY,
+    original_weight: float = DEFAULT_ORIGINAL_WEIGHT,
 ) -> list[Document]:
-    """Recherche la question et chaque reformulation, puis fusionne par RRF."""
+    """Recherche la question et chaque reformulation, puis fusionne par RRF.
+
+    - Articles exacts (cités explicitement) en tête, toujours.
+    - per_query : les `per_query` meilleurs résultats de CHAQUE reformulation sont garantis
+      dans le top k (rang 1 de toutes les reformulations, puis rang 2...), avant le reste
+      trié par RRF. Évite qu'une reformulation pertinente soit noyée sous les articles
+      ramenés par plusieurs requêtes.
+    - original_weight : poids RRF de la question d'origine (les reformulations valent 1.0).
+    """
     rankings = [
         retriever.search(q, k=n_candidates, n_candidates=n_candidates) for q in [question, *queries]
     ]
+    weights = [original_weight] + [1.0] * len(queries)
 
     score: dict[tuple, float] = defaultdict(float)
     count: dict[tuple, int] = defaultdict(int)
     exact: set[tuple] = set()
     first: dict[tuple, Document] = {}
-    for ranking in rankings:
+    for weight, ranking in zip(weights, rankings):
         for rank, doc in enumerate(ranking, 1):
             key = _key(doc)
-            score[key] += 1 / (RRF_K + rank)
+            score[key] += weight / (RRF_K + rank)
             count[key] += 1
             first.setdefault(key, doc)
             if doc.metadata.get("match") == "exact":
                 exact.add(key)
 
-    # Les articles cités explicitement restent en tête, puis RRF décroissant.
-    ordered = sorted(score, key=lambda key: (key not in exact, -score[key]))[:k]
+    # Priorité de garantie : rang r de chaque reformulation (r < per_query), plus petit = prioritaire.
+    guaranteed: dict[tuple, int] = {}
+    for r in range(per_query):
+        for ranking in rankings[1:]:
+            if r < len(ranking):
+                guaranteed.setdefault(_key(ranking[r]), r)
+
+    # Articles exacts en tête, puis garantis (par rang), puis RRF décroissant.
+    ordered = sorted(
+        score,
+        key=lambda key: (key not in exact, guaranteed.get(key, len(rankings) + per_query), -score[key]),
+    )[:k]
     results = []
     for key in ordered:
         doc = first[key]

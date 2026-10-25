@@ -157,26 +157,37 @@ Chaque run est écrit dans `eval/runs/<date>_<label>/` : `results.jsonl`, `summa
 
 ### Résultats
 
-Baseline (`eval/baseline.json`, run `baseline-e5base` : DeepSeek `deepseek-chat`, multilingual-e5-base) :
+DeepSeek `deepseek-chat`, multilingual-e5-base. Deux runs : la première version (`baseline-e5base`), puis la version actuelle (`guard-perquery`, référence de `eval/baseline.json`) avec deux changements mesurés séparément avant d'être combinés :
 
-| Métrique | Valeur |
-|---|---|
-| Recherche : article attendu parmi les extraits | 80 % (32/40) |
-| Taux de réponse (`answerable`) | 90 % (36/40) |
-| Précision des citations | 88,9 % (32/36) |
-| Refus corrects (hors corpus + hors sujet) | 100 % (20/20) |
-| Réponses à tort | 0 % |
-| Détection du hors-sujet (dont injection) | 100 % |
-| Juge : exactitude / ancrage | 95,8 % / 100 % |
-| RAGAS : faithfulness / answer relevancy / context recall | 82,8 % / 86,3 % / 83,3 % |
-| Latence p50 / p95 | 4,0 s / 4,9 s |
+- **garde-fou** : le prompt énumère ce que couvrent les deux codes et, en cas de doute, laisse passer la question (la vérification aval refuse ce qui n'est pas trouvé) ;
+- **fusion multi-requêtes** : le meilleur résultat de chaque reformulation est garanti parmi les 8 extraits (mesuré hors-ligne sur les reformulations du premier run : 32 → 35/40 ; les variantes plus complexes ne faisaient pas mieux).
 
-Lecture des 8 échecs :
+| Métrique | baseline-e5base | guard-perquery |
+|---|---|---|
+| Recherche : article attendu parmi les extraits | 80 % (32/40) | **90 %** (36/40) |
+| Taux de réponse (`answerable`) | 90 % (36/40) | **97,5 %** (39/40) |
+| Précision des citations | 88,9 % (32/36) | **92,3 %** (36/39) |
+| Refus corrects (hors corpus + hors sujet) | 100 % (20/20) | 100 % (20/20) |
+| Réponses à tort | 0 % | 0 % |
+| Détection du hors-sujet (dont injection) | 100 % | 100 % |
+| Juge : exactitude / ancrage | 95,8 % / 100 % | 96,2 % / 98,7 % |
+| RAGAS : faithfulness | 82,8 % | 78,3 % |
+| RAGAS : answer relevancy | 86,3 % | 86,2 % |
+| RAGAS : context recall | 83,3 % | 87,2 % |
+| Latence p50 / p95 | 4,0 s / 4,9 s | 1,9 s / 2,7 s* |
+
+\* Latence du second run réduite par le cache LLM : pas une amélioration réelle.
+
+La baisse de faithfulness RAGAS accompagne la hausse du taux de réponse : l'agent répond désormais à des questions plus difficiles qu'il refusait, et RAGAS (même LLM que l'agent) note plus sévèrement ces réponses. La vérification déterministe des citations, elle, n'a laissé passer aucune citation hors des extraits.
+
+Échecs restants (4) : âge du mariage (art. 144 jamais récupéré, refus prudent) ; abus de faiblesse (L121-8) et information précontractuelle (L111-1) non cités ; préjudice écologique, où l'agent cite les articles 1247 à 1252 (régime de réparation, juridiquement correct) alors que seul 1246 est attendu. Ce dernier cas n'a pas été corrigé dans le jeu de test, pour ne pas ajuster la mesure à l'agent à chaque run.
+
+Lecture des 8 échecs du premier run :
 
 - 3 refus prudents (âge du mariage, prescription, obligation alimentaire) : la reformulation est bonne mais l'article exact n'est pas récupéré ; l'agent refuse au lieu d'inventer.
 - 1 refus du garde-fou à tort : le préjudice écologique (art. 1246 du Code civil) classé en droit de l'environnement.
 - 2 vrais ratés : abus de faiblesse (L121-8) confondu avec le droit de rétractation ; obligation d'information précontractuelle sans L111-1.
-- 2 réponses juridiquement défendables mais hors des articles attendus (1112-1 au lieu de 1104, 1242 au lieu de 1241) : limite du jeu de test plutôt que de l'agent.
+- 2 réponses juridiquement défendables mais hors des articles attendus (1112-1 au lieu de 1104, 1242 au lieu de 1241) : limite du jeu de test plutôt que de l'agent. Ces deux articles ont été **ajoutés** aux articles attendus après ce run (champ `note` dans `questions.jsonl`), sans retirer les articles d'origine. Corriger la vérité terrain après avoir vu les résultats favorise l'agent : c'est signalé ici pour que les chiffres suivants soient lus en conséquence.
 
 Le 100 % d'ancrage du juge est à prendre avec prudence : le même LLM génère et juge.
 
