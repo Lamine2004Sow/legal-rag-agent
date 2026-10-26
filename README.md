@@ -115,6 +115,14 @@ python reformulate.py "J'ai renvoyé un colis..."        # reformulation + reche
 python graph.py --mermaid                               # diagramme du graphe
 ```
 
+### Interface web
+
+```bash
+streamlit run app.py
+```
+
+L'interface propose 8 exemples cliquables (4 réponses, 4 refus : autre domaine du droit, article inexistant, hors sujet, tentative d'injection), une saisie libre limitée à 500 caractères et à 10 questions par session (`APP_MAX_QUESTIONS`), un badge de statut expliqué pour chaque réponse ou refus, les sources en liens Légifrance, le détail du travail de l'agent (reformulations, articles récupérés, vérification) et les métriques d'évaluation en barre latérale. `requirements-app.txt` liste les dépendances de l'interface seule, pour un hébergement CPU.
+
 ## Évaluation
 
 ### Jeu de test

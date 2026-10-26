@@ -1,0 +1,17 @@
+# Dépendances minimales de l'app Streamlit (sans ragas ni pytest).
+# Usage : pip install -r requirements-app.txt
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+pandas>=2.2
+pyarrow>=15
+huggingface_hub>=0.23
+langchain-core>=0.3
+langchain-community==0.3.31  # même version que requirements.txt (contrainte de ragas)
+langchain-huggingface>=0.1
+sentence-transformers>=3.0
+faiss-cpu>=1.8
+rank_bm25>=0.2.2
+langchain-openai>=0.3
+langgraph>=0.3
+python-dotenv>=1.0
+streamlit>=1.40
