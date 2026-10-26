@@ -106,6 +106,23 @@ Construire l'index (≈ 15 min sur CPU pour e5-base) :
 
 `ragas==0.4.3` exige `langchain-community==0.3.31` (il importe des modules retirés en 0.4) : les versions sont épinglées dans `requirements.txt`.
 
+## Commandes rapides
+
+Un `Makefile` regroupe les commandes courantes (`make help` liste toutes les cibles) :
+
+```bash
+make install      # crée .venv, installe torch CPU puis requirements.txt
+make index        # construit l'index s'il manque (make index-force pour reconstruire)
+make ask Q="Peut-on se marier à 16 ans ?"
+make app          # interface Streamlit, en local uniquement
+make test         # tests unitaires, hors-ligne
+make eval LABEL=essai EVAL_OPTS="--judge --ragas"
+make regression   # non-régression contre eval/baseline.json
+make check        # test puis regression
+```
+
+La non-régression se lance en local (`make check`) avant de pousser : l'API DeepSeek n'est pas joignable depuis les runners GitHub.
+
 ## Utilisation
 
 ```bash
