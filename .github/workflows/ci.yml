@@ -1,0 +1,249 @@
+# Intégration continue : index, tests hors-ligne, non-régression de l'agent.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Valeurs identiques à eval/baseline.json (config) : sinon l'empreinte de configuration diffère.
+env:
+  RETRIEVER_DATA_DIR: data/e5-base
+  RETRIEVER_MODEL: intfloat/multilingual-e5-base
+  DEEPSEEK_MODEL: deepseek-chat
+  HF_HUB_DISABLE_TELEMETRY: 1
+  PYTHONUNBUFFERED: 1
+
+jobs:
+  # Construit l'index (ou le restaure depuis le cache) pour les jobs suivants.
+  index:
+    name: Construire l'index
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      # Torch CPU d'abord, pour éviter la version CUDA par défaut.
+      - name: Installer torch CPU puis les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+
+      - name: Restaurer l'index et le modèle d'embedding
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.RETRIEVER_DATA_DIR }}
+            ~/.cache/huggingface
+          key: index-${{ hashFiles('ingest.py') }}-intfloat-multilingual-e5-base
+
+      - name: Construire l'index
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: python ingest.py --model "$RETRIEVER_MODEL" --out "$RETRIEVER_DATA_DIR"
+
+  # Tests unitaires hors-ligne : aucune clé API nécessaire.
+  tests:
+    name: Tests unitaires (hors-ligne)
+    needs: index
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Installer torch CPU puis les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+
+      - name: Restaurer l'index et le modèle d'embedding
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.RETRIEVER_DATA_DIR }}
+            ~/.cache/huggingface
+          key: index-${{ hashFiles('ingest.py') }}-intfloat-multilingual-e5-base
+          fail-on-cache-miss: true
+
+      - name: Lancer les tests hors-ligne
+        run: python -m pytest -m "not regression"
+
+  # Non-régression : rejoue l'évaluation et compare au baseline. Nécessite le secret DEEPSEEK_API_KEY.
+  regression:
+    name: Non-régression (évaluation)
+    needs: index
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # pull-requests: read est requis par dorny/paths-filter sur les pull requests.
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Les secrets ne sont pas utilisables dans `if:` au niveau du job : on passe par une sortie d'étape.
+      - name: Vérifier la présence du secret
+        id: key
+        run: |
+          if [ -n "$DEEPSEEK_API_KEY" ]; then
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Avertir si le secret manque
+        if: steps.key.outputs.has_key != 'true'
+        run: |
+          echo "::warning::Secret DEEPSEEK_API_KEY absent : la non-régression est ignorée. Ajoutez-le dans Settings > Secrets and variables > Actions."
+
+      - name: Détecter les changements qui influencent les réponses
+        id: changes
+        if: steps.key.outputs.has_key == 'true' && github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            agent:
+              - 'graph.py'
+              - 'reformulate.py'
+              - 'retriever.py'
+              - 'llm.py'
+              - 'ingest.py'
+              - 'eval/**'
+              - 'requirements.txt'
+
+      - name: Décider si l'évaluation tourne
+        id: decide
+        if: steps.key.outputs.has_key == 'true'
+        env:
+          EVENT: ${{ github.event_name }}
+          AGENT_CHANGED: ${{ steps.changes.outputs.agent }}
+        run: |
+          if [ "$EVENT" = "pull_request" ] && [ "$AGENT_CHANGED" != "true" ]; then
+            echo "Aucun fichier qui influence les réponses n'a changé : évaluation ignorée."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.decide.outputs.run == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Installer torch CPU puis les dépendances
+        if: steps.decide.outputs.run == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+
+      - name: Restaurer l'index et le modèle d'embedding
+        if: steps.decide.outputs.run == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.RETRIEVER_DATA_DIR }}
+            ~/.cache/huggingface
+          key: index-${{ hashFiles('ingest.py') }}-intfloat-multilingual-e5-base
+          fail-on-cache-miss: true
+
+      # Clé unique à chaque run : la version enrichie est toujours sauvegardée ;
+      # restore-keys reprend la précédente, donc les appels inchangés sont rejoués gratuitement.
+      - name: Restaurer le cache des appels LLM
+        if: steps.decide.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: .cache/llm.sqlite
+          key: llm-${{ github.run_id }}
+          restore-keys: llm-
+
+      - name: Rejouer l'évaluation et la non-régression
+        if: steps.decide.outputs.run == 'true'
+        run: python -m pytest -m regression --run-eval
+
+      - name: Publier les runs d'évaluation
+        if: always() && steps.decide.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-runs
+          path: eval/runs/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Résumé des métriques du dernier run
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import json
+          import os
+          from pathlib import Path
+
+          KEYS = [
+              "retrieval_hit_rate",
+              "answer_rate",
+              "citation_accuracy",
+              "correct_refusal_rate",
+              "false_answer_rate",
+              "off_topic_detection",
+              "error_count",
+          ]
+
+          lines = ["## Non-régression : métriques du dernier run", ""]
+          try:
+              runs = sorted(
+                  Path("eval/runs").glob("*/summary.json"),
+                  key=lambda p: p.parent.name,
+                  reverse=True,
+              )
+              if not runs:
+                  lines.append("Aucun run d'évaluation disponible.")
+              else:
+                  summary = json.loads(runs[0].read_text(encoding="utf-8"))
+                  lines += [f"Run : `{runs[0].parent.name}`", "", "| Métrique | Valeur |", "|---|---|"]
+                  for key in KEYS:
+                      value = summary.get(key)
+                      if value is None:
+                          text = "n/a"
+                      elif key == "error_count":
+                          text = str(int(value))
+                      else:
+                          text = f"{value * 100:.1f} %".replace(".", ",")
+                      lines.append(f"| {key} | {text} |")
+          except Exception as exc:  # résumé informatif : ne doit jamais faire échouer le job
+              lines.append(f"Résumé indisponible : {exc}")
+
+          output = "\n".join(lines) + "\n"
+          target = os.environ.get("GITHUB_STEP_SUMMARY")
+          if target:
+              with open(target, "a", encoding="utf-8") as f:
+                  f.write(output)
+          else:
+              print(output)
+          EOF
