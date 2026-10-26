@@ -184,6 +184,19 @@ jobs:
           key: llm-${{ github.run_id }}
           restore-keys: llm-
 
+      # Les nœuds de l'agent transforment une panne du LLM en refus : on vérifie l'accès avant l'évaluation.
+      - name: Vérifier l'accès à DeepSeek
+        if: steps.decide.outputs.run == 'true'
+        run: |
+          python - <<'EOF'
+          from llm import get_llm
+          try:
+              print("DeepSeek OK :", get_llm().invoke("Réponds OK.").content[:20])
+          except Exception as exc:
+              print(f"::error::Appel DeepSeek impossible : {type(exc).__name__}: {exc}")
+              raise SystemExit(1)
+          EOF
+
       - name: Rejouer l'évaluation et la non-régression
         if: steps.decide.outputs.run == 'true'
         run: python -m pytest -m regression --run-eval
