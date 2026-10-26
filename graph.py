@@ -33,6 +33,15 @@ logger = logging.getLogger(__name__)
 TOP_K = 8
 MAX_ATTEMPTS = 2
 
+
+def reformulation_enabled() -> bool:
+    """REFORMULATE=0 désactive le nœud de reformulation : la recherche porte sur la question seule.
+
+    Sert à mesurer ce que la reformulation apporte, par exemple face à un modèle
+    d'embeddings fine-tuné (projet legal-embeddings-finetune).
+    """
+    return os.environ.get("REFORMULATE", "1") != "0"
+
 ANSWERED = "answered"
 REFUSED_OFF_TOPIC = "refused_off_topic"
 REFUSED_OUT_OF_SCOPE = "refused_out_of_scope"
@@ -216,7 +225,11 @@ def build_graph(llm: BaseChatModel | None = None, retriever: HybridRetriever | N
             return {"status": REFUSED_UNKNOWN_ARTICLE}
         return {"status": ""}
 
+    use_reformulation = reformulation_enabled()
+
     def reformulate_node(state: AgentState) -> dict:
+        if not use_reformulation:
+            return {"queries": []}
         return {"queries": reformulate(state["question"], llm).queries}
 
     def retrieve(state: AgentState) -> dict:

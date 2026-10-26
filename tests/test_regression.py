@@ -79,7 +79,12 @@ def current_fingerprint() -> dict:
         "DEEPSEEK_MODEL": os.environ.get("DEEPSEEK_MODEL", run_eval.DEFAULT_DEEPSEEK_MODEL),
         "RETRIEVER_DATA_DIR": os.environ.get("RETRIEVER_DATA_DIR", run_eval.DEFAULT_DATA_DIR),
         "RETRIEVER_MODEL": os.environ.get("RETRIEVER_MODEL", DEFAULT_MODEL),
+        "REFORMULATE": os.environ.get("REFORMULATE", "1"),
     }
+
+
+# Clés ajoutées à l'empreinte après coup : valeur implicite des runs plus anciens.
+FINGERPRINT_DEFAULTS = {"REFORMULATE": "1"}
 
 
 def find_matching_run(fingerprint: dict, runs_dir: Path | None = None) -> Path | None:
@@ -93,9 +98,9 @@ def find_matching_run(fingerprint: dict, runs_dir: Path | None = None) -> Path |
             continue
         config = json.loads(config_path.read_text(encoding="utf-8"))
         options = config.get("options") or {}
-        if options.get("limit") is not None or options.get("ids"):
-            continue  # run partiel : pas une base de comparaison
-        if all(config.get(key) == value for key, value in fingerprint.items()):
+        if options.get("limit") is not None or options.get("ids") or options.get("questions"):
+            continue  # run partiel ou sur un autre jeu : pas une base de comparaison
+        if all(config.get(key, FINGERPRINT_DEFAULTS.get(key)) == value for key, value in fingerprint.items()):
             return run
     return None
 

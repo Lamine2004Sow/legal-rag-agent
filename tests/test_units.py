@@ -573,6 +573,31 @@ def test_run_partiel_ignore(tmp_path: Path) -> None:
     assert reg.find_matching_run(FP, runs_dir=tmp_path) is None
 
 
+def test_run_sur_autre_jeu_de_questions_ignore(tmp_path: Path) -> None:
+    write_run(tmp_path, "20260101-100000_x", FP, options={**NO_OPTIONS, "questions": "autre.jsonl"})
+    assert reg.find_matching_run(FP, runs_dir=tmp_path) is None
+
+
+def test_run_ancien_sans_cle_reformulate_vaut_reformulation_active(tmp_path: Path) -> None:
+    run = write_run(tmp_path, "20260101-100000_x", FP)
+    assert reg.find_matching_run({**FP, "REFORMULATE": "1"}, runs_dir=tmp_path) == run
+    assert reg.find_matching_run({**FP, "REFORMULATE": "0"}, runs_dir=tmp_path) is None
+
+
+def test_run_sans_reformulation_ne_sert_pas_de_baseline_par_defaut(tmp_path: Path) -> None:
+    write_run(tmp_path, "20260101-100000_x", {**FP, "REFORMULATE": "0"})
+    assert reg.find_matching_run({**FP, "REFORMULATE": "1"}, runs_dir=tmp_path) is None
+
+
+def test_reformulation_desactivable(monkeypatch) -> None:
+    import graph
+
+    monkeypatch.setenv("REFORMULATE", "0")
+    assert not graph.reformulation_enabled()
+    monkeypatch.delenv("REFORMULATE")
+    assert graph.reformulation_enabled()
+
+
 def test_repertoire_des_runs_monkeypatchable(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(reg, "RUNS_DIR", tmp_path)
     run = write_run(tmp_path, "20260101-100000_x", FP)
@@ -583,7 +608,7 @@ def test_empreinte_courante_alignee_sur_build_config() -> None:
     import graph
     import reformulate
 
-    args = argparse.Namespace(judge=False, ragas=False, limit=None, ids=None)
+    args = argparse.Namespace(judge=False, ragas=False, limit=None, ids=None, questions=None)
     cfg = run_eval.build_config("test", args, 1, graph, reformulate)
     fingerprint = reg.current_fingerprint()
     assert {k: cfg[k] for k in fingerprint} == fingerprint

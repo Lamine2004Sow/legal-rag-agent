@@ -4,6 +4,8 @@ Usage (depuis la racine du projet) :
     python eval/run_eval.py                                  # métriques déterministes seules
     python eval/run_eval.py --label v2 --judge --ragas       # + LLM-as-a-judge et RAGAS (appels DeepSeek)
     python eval/run_eval.py --limit 5 --ids civ-01,con-01    # sous-ensemble
+    python eval/run_eval.py --questions autre.jsonl          # autre jeu de questions (hors non-régression)
+    REFORMULATE=0 python eval/run_eval.py --label sans-reformulation
     python eval/run_eval.py --from-run eval/runs/<dir> --ragas  # rescore un run existant, sans relancer l'agent
 
 Chaque run écrit eval/runs/<YYYYmmdd-HHMMSS>_<label>/ :
@@ -434,8 +436,15 @@ def build_config(label: str, args: argparse.Namespace, n_questions: int, graph_m
         "DEEPSEEK_MODEL": os.environ.get("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL),
         "RETRIEVER_DATA_DIR": os.environ.get("RETRIEVER_DATA_DIR", DEFAULT_DATA_DIR),
         "RETRIEVER_MODEL": os.environ.get("RETRIEVER_MODEL", DEFAULT_MODEL),
+        "REFORMULATE": os.environ.get("REFORMULATE", "1"),
         "prompt_hashes": prompt_hashes(graph_mod, reformulate_mod),
-        "options": {"judge": args.judge, "ragas": args.ragas, "limit": args.limit, "ids": args.ids},
+        "options": {
+            "judge": args.judge,
+            "ragas": args.ragas,
+            "limit": args.limit,
+            "ids": args.ids,
+            "questions": args.questions,
+        },
         "n_questions": n_questions,
     }
 
@@ -609,6 +618,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=None, help="Ne garder que les N premières questions.")
     parser.add_argument("--ids", default=None, help="Liste d'identifiants séparés par des virgules.")
     parser.add_argument(
+        "--questions",
+        default=None,
+        help="Autre jeu de questions (JSONL, même format) ; le run n'est alors pas comparé au baseline.",
+    )
+    parser.add_argument(
         "--from-run",
         metavar="RUN_DIR",
         default=None,
@@ -636,7 +650,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.judge or args.ragas:
         _check_api_key()
 
-    questions = select_questions(load_questions(), args.ids, args.limit)
+    questions_path = Path(args.questions) if args.questions else QUESTIONS_PATH
+    questions = select_questions(load_questions(questions_path), args.ids, args.limit)
     if not questions:
         print("Aucune question à évaluer.", file=sys.stderr)
         return 1
